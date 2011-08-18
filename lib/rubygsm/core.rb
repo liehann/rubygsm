@@ -8,6 +8,7 @@
 # standard library
 require "timeout.rb"
 require "date.rb"
+require 'thread'
 
 # gems (we're using the ruby-serialport gem
 # now, so we can depend upon it in our spec)

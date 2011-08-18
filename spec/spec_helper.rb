@@ -4,3 +4,7 @@ here = File.dirname(__FILE__)
 require "#{here}/../lib/rubygsm.rb"
 require "#{here}/mock/modem.rb"
 
+RSpec.configure do |config|
+  config.mock_with :mocha
+end
+

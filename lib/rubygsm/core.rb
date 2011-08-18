@@ -918,6 +918,7 @@ class Modem
 	def receive(callback = nil, interval=5, join_thread=false, &block)
 		raise 'No callback provided' unless callback || block_given?
 		callback ||= block
+
 		@polled = 0
 		
 		@thr = Thread.new do
@@ -949,6 +950,8 @@ class Modem
 		raise 'No callback provided' unless callback || block_given?
 		callback ||= block
 
+		@polled ||= 0
+
 		command "AT"
 
 		# enable new message notification mode every ten intevals, in case the
@@ -965,6 +968,7 @@ class Modem
 		
 		# make a shallow copy of incoming messages to iterate over, and
 		# clear the incoming queue.
+		messages = []
 		@incoming_mutex.synchronize do
 			messages = @incoming.clone
 			@incoming.clear

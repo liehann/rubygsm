@@ -103,6 +103,11 @@ class Modem
 		# until they're dealt with by
 		# someone else, like a commander
 		@incoming = []
+
+		# mutual exclusion around the incoming queue
+		# to prevent readers and writers acting on it 
+		# simultaneously
+		@incoming_mutex = Mutex.new
 		
 		# initialize the modem; rubygsm is (supposed to be) robust enough to function
 		# without these working (hence the "try_"), but they make different modems more
@@ -227,7 +232,9 @@ class Modem
 				# is kind of ghetto, and WILL change later)
 				sent = parse_incoming_timestamp(timestamp)
 				msg = Gsm::Incoming.new(self, from, sent, msg_text)
-				@incoming.push(msg)
+				@incoming_mutex.synchronize do
+					@incoming.push(msg)
+				end
 			end
 			
 			# drop the two CMT lines (meta-info and message),
@@ -882,10 +889,10 @@ class Modem
 	
 	
 	# call-seq:
-	#   receive(callback_method, interval=5, join_thread=false)
+	#   receive(callback_method, interval=5, join_thread=false, &block)
 	#
 	# Starts a new thread, which polls the device every _interval_
-	# seconds to capture incoming SMS and call _callback_method_
+	# seconds to capture incoming SMS and call _callback_method_ or _block_
 	# for each, and polls the device's internal storage for incoming
 	# SMS that we weren't notified about (some modems don't support
 	# that).
@@ -908,7 +915,9 @@ class Modem
 	# Note: New messages may arrive at any time, even if this method's
 	# receiver thread isn't waiting to process them. They are not lost,
 	# but cached in @incoming until this method is called.
-	def receive(callback, interval=5, join_thread=false)
+	def receive(callback = nil, interval=5, join_thread=false, &block)
+		raise 'No callback provided' unless callback || block_given?
+		callback ||= block
 		@polled = 0
 		
 		@thr = Thread.new do
@@ -916,44 +925,11 @@ class Modem
 			
 			# keep on receiving forever
 			while true
-				command "AT"
-
-				# enable new message notification mode every ten intevals, in case the
-				# modem "forgets" (power cycle, etc)
-				if (@polled % 10) == 0
-					try_command("AT+CNMI=2,2,0,0,0")
-				end
-				
-				# check for new messages lurking in the device's
-				# memory (in case we missed them (yes, it happens))
-				if (@polled % 4) == 0
-					fetch_stored_messages
-				end
-				
-				# if there are any new incoming messages,
-				# iterate, and pass each to the receiver
-				# in the same format that they were built
-				# back in _parse_incoming_sms!_
-				unless @incoming.empty?
-					@incoming.each do |msg|
-						begin
-							callback.call(msg)
-							
-						rescue StandardError => err
-							log "Error in callback: #{err}"
-						end
-					end
-					
-					# we have dealt with all of the pending
-					# messages. todo: this is a ridiculous
-					# race condition, and i fail at ruby
-					@incoming.clear
-				end
+				receive!(callback)
 				
 				# re-poll every
 				# five seconds
 				sleep(interval)
-				@polled += 1
 			end
 		end
 		
@@ -962,6 +938,53 @@ class Modem
 		@thr.join if join_thread
 	end
 	
+
+	# call-seq
+	#		receive!(callback_method, &block)
+	#
+	# Polls the device's internal storage SMS that we weren't notified about
+	# and for each received message (polled or notified) calls _callback_method_
+	# or block.
+	def receive!(callback = nil, &block)
+		raise 'No callback provided' unless callback || block_given?
+		callback ||= block
+
+		command "AT"
+
+		# enable new message notification mode every ten intevals, in case the
+		# modem "forgets" (power cycle, etc)
+		if (@polled % 10) == 0
+			try_command("AT+CNMI=2,2,0,0,0")
+		end
+		
+		# check for new messages lurking in the device's
+		# memory (in case we missed them (yes, it happens))
+		if (@polled % 4) == 0
+			fetch_stored_messages
+		end
+		
+		# make a shallow copy of incoming messages to iterate over, and
+		# clear the incoming queue.
+		@incoming_mutex.synchronize do
+			messages = @incoming.clone
+			@incoming.clear
+		end
+
+		# if there are any new incoming messages,
+		# iterate, and pass each to the receiver
+		# in the same format that they were built
+		# back in _parse_incoming_sms!_
+		messages.each do |msg|
+			begin
+				callback.call(msg)
+				
+			rescue StandardError => err
+				log "Error in callback: #{err}"
+			end
+		end
+
+		@polled += 1
+	end
 
 	def fetch_stored_messages
 		
@@ -1007,7 +1030,9 @@ class Modem
 			# is kind of ghetto, and WILL change later)
 			sent = parse_incoming_timestamp(timestamp)
 			msg = Gsm::Incoming.new(self, from, sent, msg_text)
-			@incoming.push(msg)
+			@incoming_mutex.synchronize do
+				@incoming.push(msg)
+			end
 		
 			# skip over the messge line(s),
 			# on to the next CMGL line

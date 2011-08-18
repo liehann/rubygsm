@@ -18,7 +18,7 @@ Gem::Specification.new do |s|
 		"lib/rubygsm/msg/incoming.rb",
 		"lib/rubygsm/msg/outgoing.rb",
 		"bin/gsm-modem-band",
-		"bin/gsm-app-monitor"
+		"bin/sms"
 	]
 	
 	s.executables = [

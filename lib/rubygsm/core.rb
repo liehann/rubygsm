@@ -354,6 +354,7 @@ class Modem
 	def command(cmd, *args)
 		tries = 0
 		out = []
+		reset_count = 0
 		
 		begin
 			# attempt to issue the command, which
@@ -376,7 +377,8 @@ class Modem
 			# then try again. if the reboot fails, there is
 			# nothing that we can do; so propagate
 			# reboot the modem. this happens more often
-			if @reset_on_failure
+			if @reset_on_failure && reset_count == 0
+				reset_count += 1
 				log_then_decr "Resetting the modem"
 				retry if reset!
 

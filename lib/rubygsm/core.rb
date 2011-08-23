@@ -38,12 +38,14 @@ class Modem
 	# The constructor can either take a list of parameters (port, verbosity, baud and cmd_delay)
 	# or the parameters in 
 	def parse_options(*args)
-		unless args.length == 1 && Hash === args
+		unless args.length == 1 && Hash === args[0]
 			new_args = {}
 			[:port, :verbosity, :baud, :cmd_delay].each_with_index do |name, i|
-				new_args[name] = args[i] if args[i]
+				new_args[name] = args[0][i] if args[0][i]
 			end
 			args = new_args
+		else
+			args = args[0]
 		end
 
 		DEFAULT_OPTIONS.merge(args)
@@ -57,6 +59,7 @@ class Modem
 	# or /dev/ttyUSB0), and start logging to *rubygsm.log* in the chdir.
 	def initialize(*args)
 		options = parse_options(*args)
+	puts options.inspect
 		port = options[:port]
 		@baud = options[:baud]
 		@data_bits = options[:data_bits]
@@ -155,8 +158,12 @@ class Modem
 		command "AT+CMGF=1"
 	end
 	
-	
-	
+	def close
+		begin
+			@device.close if @device
+		rescue
+		end
+	end
 	
 	private
 	

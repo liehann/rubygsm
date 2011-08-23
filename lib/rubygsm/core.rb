@@ -59,7 +59,6 @@ class Modem
 	# or /dev/ttyUSB0), and start logging to *rubygsm.log* in the chdir.
 	def initialize(*args)
 		options = parse_options(*args)
-	puts options.inspect
 		port = options[:port]
 		@baud = options[:baud]
 		@data_bits = options[:data_bits]

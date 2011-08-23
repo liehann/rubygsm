@@ -223,7 +223,7 @@ class Modem
 			# and responded to quickly, before we get
 			# a chance to issue at+cnma)
 			begin
-				command "AT+CNMA"
+				command! "AT+CNMA"
 				
 			# not terribly important if it
 			# fails, even though it shouldn't

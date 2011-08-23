@@ -21,16 +21,48 @@ class Modem
 	
 	
 	attr_accessor :verbosity, :read_timeout
-	attr_reader :device, :port
-	
+	attr_reader :device, :port, :baud, :data_bits, :stop_bits, :parity
+
+	DEFAULT_OPTIONS = {
+		:port => :auto,
+		:baud => 9600,
+		:data_bits => 8,
+		:stop_bits => 1,
+		:parity => SerialPort::NONE,
+
+		:verbosity => :warn,
+		:cmd_delay => 0.1
+	}
+
+	# no-doc
+	# The constructor can either take a list of parameters (port, verbosity, baud and cmd_delay)
+	# or the parameters in 
+	def parse_options(*args)
+		unless args.length == 1 && Hash === args
+			new_args = {}
+			[:port, :verbosity, :baud, :cmd_delay].each_with_index do |name, i|
+				new_args[name] = args[i] if args[i]
+			end
+			args = new_args
+		end
+
+		DEFAULT_OPTIONS.merge(args)
+	end
+
 	# call-seq:
 	#   Gsm::Modem.new(port, verbosity=:warn)
 	#
 	# Create a new instance, to initialize and communicate exclusively with a
 	# single modem device via the _port_ (which is usually either /dev/ttyS0
 	# or /dev/ttyUSB0), and start logging to *rubygsm.log* in the chdir.
-	def initialize(port=:auto, verbosity=:warn, baud=9600, cmd_delay=0.1)
-		
+	def initialize(*args)
+		options = parse_options(*args)
+		port = options[:port]
+		@baud = options[:baud]
+		@data_bits = options[:data_bits]
+		@stop_bits = options[:stop_bits]
+		@parity = options[:parity]
+
 		# if no port was specified, we'll attempt to iterate
 		# all of the serial ports that i've ever seen gsm
 		# modems mounted on. this is kind of shaky, and
@@ -44,7 +76,7 @@ class Modem
 			
 						begin
 							# serialport args: port, baud, data bits, stop bits, parity
-							device = SerialPort.new(try_port, baud, 8, 1, SerialPort::NONE)
+							device = SerialPort.new(try_port, @baud, @data_bits, @stop_bits, @parity)
 							throw :found, [device, try_port]
 						
 						rescue ArgumentError, Errno::ENOENT
@@ -61,7 +93,7 @@ class Modem
 		# if the port was a port number or file
 		# name, initialize a serialport object
 		elsif port.is_a?(String) or port.is_a?(Fixnum)
-			@device = SerialPort.new(port, baud, 8, 1, SerialPort::NONE)
+			@device = SerialPort.new(port, @baud, @data_bits, @stop_bits, @parity)
 			@port = port
 			
 		# otherwise, we'll assume that the object passed
@@ -71,8 +103,8 @@ class Modem
 			@port = nil
 		end
 		
-		@cmd_delay = cmd_delay
-		@verbosity = verbosity
+		@cmd_delay = options[:cmd_delay]
+		@verbosity = options[:verbosity]
 		@locked_to = false
 
 		# how long should we wait for the modem to

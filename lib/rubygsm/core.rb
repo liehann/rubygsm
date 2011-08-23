@@ -38,14 +38,14 @@ class Modem
 	# The constructor can either take a list of parameters (port, verbosity, baud and cmd_delay)
 	# or the parameters in 
 	def parse_options(*args)
-		unless args.length == 1 && Hash === args[0]
+		if args.length == 1 && Hash === args[0]
+			args = args[0]
+		else
 			new_args = {}
 			[:port, :verbosity, :baud, :cmd_delay].each_with_index do |name, i|
-				new_args[name] = args[0][i] if args[0][i]
+				new_args[name] = args[i] if args[i]
 			end
 			args = new_args
-		else
-			args = args[0]
 		end
 
 		DEFAULT_OPTIONS.merge(args)

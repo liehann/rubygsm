@@ -9,6 +9,7 @@
 require "timeout.rb"
 require "date.rb"
 require 'thread'
+require 'monitor'
 
 # gems (we're using the ruby-serialport gem
 # now, so we can depend upon it in our spec)
@@ -139,10 +140,13 @@ class Modem
 		# someone else, like a commander
 		@incoming = []
 
-		# mutual exclusion around the incoming queue
+		# Mutual exclusion around the incoming queue
 		# to prevent readers and writers acting on it 
-		# simultaneously
+		# simultaneously.
 		@incoming_mutex = Mutex.new
+
+		# Only allow one tdevice_monitor to access the device at a time.
+		@device_monitor = Monitor.new
 		
 		# initialize the modem; rubygsm is (supposed to be) robust enough to function
 		# without these working (hence the "try_"), but they make different modems more
@@ -383,7 +387,7 @@ class Modem
 				retry if reset!
 
 				# failed to reboot :'(
-				log "Couldn't rese"
+				log "Couldn't reset"
 				raise
 
 			else
@@ -410,7 +414,7 @@ class Modem
 			out = ""
 			log_incr "Command!: #{cmd}"
 			
-			exclusive do
+			@device_monitor.synchronize do
 				write(cmd + write_term)
 				out = wait(resp_term)
 			end
@@ -531,55 +535,6 @@ class Modem
 			end
 		end
 	end
-	
-	
-	def exclusive &blk
-		old_lock = nil
-		
-		begin
-			
-			# prevent other threads from issuing
-			# commands TO THIS MODDEM while this
-			# block is working. this does not lock
-			# threads, just the gsm device
-			if @locked_to and (@locked_to != Thread.current)
-				log "Locked by #{@locked_to["name"]}, waiting..."
-			
-				# wait for the modem to become available,
-				# so we can issue commands from threads
-				while @locked_to
-					sleep 0.05
-				end
-			end
-			
-			# we got the lock!
-			old_lock = @locked_to
-			@locked_to = Thread.current
-			log_incr "Got lock"
-		
-			# perform the command while
-			# we have exclusive access
-			# to the modem device
-			yield
-			
-		
-		# something went bang, which happens, but
-		# just pass it on (after unlocking...)
-		rescue Gsm::Error
-			raise
-		
-		
-		# no message, but always un-
-		# indent subsequent log messages
-		# and RELEASE THE LOCK
-		ensure
-			@locked_to = old_lock
-			Thread.pass
-			log_decr
-		end
-	end
-	
-	
 	
 	
 	public
@@ -881,7 +836,7 @@ class Modem
 		
 		# block the receiving thread while
 		# we're sending. it can take some time
-		exclusive do
+		@device_monitor.synchronize do
 			tries = 0
 			
 			begin
@@ -1040,7 +995,7 @@ class Modem
 		# if the last line returned is OK
 		# (and it SHOULD BE), remove it
 		lines.pop if lines[-1] == "OK"
-		
+
 		# keep on iterating the data we received,
 		# until there's none left. if there were no
 		# stored messages waiting, this done nothing!

@@ -8,53 +8,44 @@ describe Gsm::Modem do
 		end.should_not raise_error
 	end
 	
-	it "resets the modem after 5 consecutive errors" do
-		
-		# this modem will return errors when AT+CSQ is
-		# called, UNTIL the modem is reset. a flag is
-		# also set, so we can check for the reset
-		class TestModem < Gsm::Mock::Modem
-			attr_reader :has_reset
-			
-			def at_csq(*args)
-				@has_reset ? super : false
-			end
-			
-			def at_cfun(*args)
-				(@has_reset = true)
-			end
-		end
-
-		# start rubygsm, and call
-		# the troublesome method
-		modem = TestModem.new		
-		gsm = Gsm::Modem.new(modem)
-		gsm.signal_strength
-		
-		# it should have called AT+CFUN!
-		modem.has_reset.should == true
-	end
-
-  it "calls the callback when receiving messages" do
-    modem = Gsm::Mock::Modem.new
-    modem = Gsm::Modem.new(modem)
-
-    # this is ugly, but I'm trying to test the callback loop
-    modem.expects(:command).with('AT')
-    modem.expects(:try_command).with("AT+CNMI=2,2,0,0,0")
-    modem.expects(:fetch_stored_messages)
-    
-    modem.instance_variable_get(:@incoming) << (msg = Gsm::Incoming.new(modem, 'sender', Time.at(0), 'text'))
-
-    received = []
-    modem.receive! do |msg|
-      received << msg
+  context 'with a test modem' do
+    before do
+      @modem = Gsm::Mock::Modem.new		
+      @gsm = Gsm::Modem.new(@modem)
     end
 
-    received.should == [msg]
+    it "resets the modem" do
+      @modem.expects(:at_cfun).once.returns(@modem.ok)
+      @gsm.reset!
+    end
 
-    modem.instance_variable_get(:@incoming).should be_empty
-    modem.instance_variable_get(:@polled).should == 1
+    it "resets the modem after 5 errors" do
+      # hack to make the test run faster
+      @gsm.instance_variable_set(:@retry_commands, 0)
+      @modem.expects(:at_csq).twice.returns(@modem.error, @modem.rsp_csq(20))
+      @modem.expects(:at_cfun).once.returns(@modem.ok)
+      @gsm.signal_strength.should == 20
+    end
+
+    it "sends an sms" do
+      num = '+271234567890'
+      message = 'hello world'
+      @modem.expects(:at_cmgs).with(num).returns(@modem.>)
+      @modem.expects(:text).with(message).returns(@modem.ok)
+      @gsm.send_sms(num, message)
+    end
+
+    it "calls the callback when receiving messages" do
+      @gsm.instance_variable_get(:@incoming) << (msg = Gsm::Incoming.new(@gsm, 'sender', Time.at(0), 'text'))
+      received = []
+      @gsm.receive! { |msg| received << msg }
+      received.should == [msg]
+
+      @gsm.instance_variable_get(:@incoming).should be_empty
+      @gsm.instance_variable_get(:@polled).should == 1
+    end
+
   end
+
 end
 

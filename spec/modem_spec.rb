@@ -45,6 +45,26 @@ describe Gsm::Modem do
       @gsm.instance_variable_get(:@polled).should == 1
     end
 
+    describe '.receive' do
+      it "calls the error callback when there is an error receiving messages" do
+        # Setup modem to error out when fetching stored messages, including
+        # erroring on modem reset.
+        @gsm.instance_variable_set(:@retry_commands, 0)
+        @modem.stubs(:at_cmgl).returns(@modem.error)
+        @modem.stubs(:at_cfun).returns(@modem.error)
+
+        error = false
+        error_callback = lambda do |e|
+          e.should be_a(Gsm::ResetError)
+          error = true
+          Thread.exit
+        end
+        @gsm.receive(nil, 5, true, error_callback) { }
+
+        error.should == true
+      end
+    end
+
   end
 
 end

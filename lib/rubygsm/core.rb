@@ -911,21 +911,26 @@ class Modem
 	# Note: New messages may arrive at any time, even if this method's
 	# receiver thread isn't waiting to process them. They are not lost,
 	# but cached in @incoming until this method is called.
-	def receive(callback = nil, interval=5, join_thread=false, &block)
-		raise 'No callback provided' unless callback || block_given?
+	def receive(callback = nil, interval = 5, join_thread = false, error_callback = nil, &block)
 		callback ||= block
+		raise 'No callback provided' unless callback
 
-		@polled = 0
-		
 		@thr = Thread.new do
 			Thread.current["name"] = "receiver"
 			
 			# keep on receiving forever
 			while true
-				receive!(callback)
+				begin
+					receive!(callback)
+				rescue Exception => e
+					if error_callback
+						error_callback.call(e)
+					else
+						raise e
+					end
+				end
 				
-				# re-poll every
-				# five seconds
+				# re-poll every five seconds
 				sleep(interval)
 			end
 		end
